@@ -20,7 +20,7 @@
         body {
             font-family: 'Inter', sans-serif;
             -webkit-tap-highlight-color: transparent;
-            background-color: #0f172a; /* Nền tối sang trọng ngoài khung mobile */
+            background-color: #0f172a; /* Nền tối ngoài khung di động giả lập */
         }
         .pb-safe { padding-bottom: env(safe-area-inset-bottom, 20px); }
         .custom-scrollbar::-webkit-scrollbar { height: 4px; width: 4px; }
@@ -38,6 +38,14 @@
 
     <script type="text/babel">
         const { useState, useEffect, useMemo, useRef } = React;
+
+        // ===========================================================================
+        // 1. DÁN API KEY CỦA BẠN VÀO ĐÂY (Thay thế chuỗi dưới đây bằng Key thực tế của bạn)
+        const HARDCODED_GEMINI_API_KEY = "AIzaSyB9oR7imw16wYMiqVLYShGuJBVgzbFFAu0";
+
+        // 2. CẤU HÌNH TÊN MODEL GEMINI MUỐN SỬ DỤNG TẠI ĐÂY
+        const HARDCODED_GEMINI_MODEL = "gemini-3.1-flash-lite";
+        // ===========================================================================
 
         const DEFAULT_SHEET_URL = "https://script.google.com/macros/s/AKfycbyJcqcKxvmMkFcDfstKI211v1pUBkCvXpK59Fk3XjVwcN8G6R76rDYUQ_xiyg6n-YIIzw/exec"; 
 
@@ -62,8 +70,8 @@
         const Award = (p) => <IconBase {...p}><circle cx="12" cy="8" r="7"></circle><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"></polyline></IconBase>;
         const RefreshCcw = (p) => <IconBase {...p}><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></IconBase>;
         const TerminalIcon = (p) => <IconBase {...p}><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></IconBase>;
+        const Sparkles = (p) => <IconBase {...p}><path d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707m0-12.728l.707.707m11.314 11.314l.707.707M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"></path></IconBase>;
 
-        // ================= HELPER CHỐNG LỆCH MÚI GIỜ (TIMEZONE BUGS) =================
         const formatLocalDate = (d) => {
           const year = d.getFullYear();
           const month = String(d.getMonth() + 1).padStart(2, '0');
@@ -91,7 +99,7 @@
               } catch (e) {}
               return dateVal.split('T')[0];
             }
-            return dateVal.split(' ')[0]; // Hỗ trợ "YYYY-MM-DD HH:mm:ss"
+            return dateVal.split(' ')[0];
           }
           try {
             const d = new Date(dateVal);
@@ -109,12 +117,13 @@
           }
           return !!val;
         };
-        // ===========================================================================
 
+        // Danh mục bài tập gốc
         const MOCK_EXERCISES = [
-          { id: 'E1', name: 'Hít đất (Push-up)', target_value: 100, unit: 'Lần', target_sets: 5, point: 5 },
-          { id: 'E2', name: 'Gập bụng', target_value: 100, unit: 'Lần', target_sets: 5, point: 5 },
-          { id: 'E3', name: 'Hít xà', target_value: 50, unit: 'Lần', target_sets: 5, point: 10 }
+          { id: 'E1', name: 'Hít đất cơ bản (Push-up)', target_value: 100, unit: 'rep', target_sets: 5, point: 10 },
+          { id: 'E2', name: 'Ép ngực với dây (Band Fly)', target_value: 60, unit: 'rep', target_sets: 4, point: 5 },
+          { id: 'E3', name: 'Hít xà đơn sấp tay (Pull-up)', target_value: 20, unit: 'rep', target_sets: 4, point: 10 },
+          { id: 'E4', name: 'Đi bộ nhanh (Brisk Walking)', target_value: 30, unit: 'phút', target_sets: 1, point: 10 }
         ];
 
         function getMondayOfDate(d) {
@@ -143,7 +152,7 @@
 
           const logToConsole = (type, message) => {
             const time = new Date().toLocaleTimeString();
-            setSyncLogs(prev => [{ time, type, message }, ...prev].slice(0, 50)); // Giới hạn tối đa 50 logs gần nhất
+            setSyncLogs(prev => [{ time, type, message }, ...prev].slice(0, 50));
           };
 
           const [exercises, setExercises] = useState(() => loadData('ex_exercises', MOCK_EXERCISES));
@@ -151,7 +160,7 @@
           const [details, setDetails] = useState(() => loadData('ex_details', []));
           const [profile, setProfile] = useState(() => loadData('ex_profile', { weight: 90, height: 1.73 }));
           
-          const [exForm, setExForm] = useState({ id: null, name: '', target_value: 100, unit: 'Lần', target_sets: 3, point: 5 });
+          const [exForm, setExForm] = useState({ id: null, name: '', target_value: 100, unit: 'rep', target_sets: 3, point: 5 });
           
           const [selectedDate, setSelectedDate] = useState(() => formatLocalDate(new Date()));
           const [calendarMonth, setCalendarMonth] = useState(() => new Date());
@@ -162,6 +171,14 @@
 
           const [alertModal, setAlertModal] = useState({ isOpen: false, message: '', title: 'Thông báo', showConsoleBtn: false });
           const [confirmModal, setConfirmModal] = useState({ isOpen: false, message: '', onConfirm: null });
+
+          const [geminiApiKey, setGeminiApiKey] = useState(() => {
+            const saved = loadData('gemini_api_key', '');
+            return saved && saved !== "" ? saved : HARDCODED_GEMINI_API_KEY;
+          });
+          const [aiModal, setAiModal] = useState({ isOpen: false, isLoading: false, analysis: '', adjustments: [], newSuggestions: [] });
+          const [selectedAdjIds, setSelectedAdjIds] = useState([]);
+          const [selectedNewSugIndices, setSelectedNewSugIndices] = useState([]);
 
           const [sheetUrl, setSheetUrl] = useState(() => {
             const savedUrl = localStorage.getItem('sheet_api_url');
@@ -301,35 +318,6 @@
             return { name: 'Đồng', icon: '🥉', color: 'from-amber-600 to-amber-800 shadow-amber-700/20', nextThreshold: 35, prevThreshold: 20 };
           }, [userPointsLimit]);
 
-          const currentWeekProgress = useMemo(() => {
-            const today = new Date();
-            const currentMonday = getMondayOfDate(today);
-            const weekStartStr = formatLocalDate(currentMonday);
-            const currentSunday = new Date(currentMonday);
-            currentSunday.setDate(currentSunday.getDate() + 6);
-            const weekEndStr = formatLocalDate(currentSunday);
-
-            const weekPlans = plans.filter(p => p.date >= weekStartStr && p.date <= weekEndStr);
-            let totalTargetReps = 0;
-            let totalActualReps = 0;
-
-            weekPlans.forEach(p => {
-              const planDetails = details.filter(d => d.plan_id === p.id);
-              planDetails.forEach(d => {
-                totalTargetReps += Number(d.target_reps || 0);
-                totalActualReps += Number(d.actual_reps || 0);
-              });
-            });
-
-            const completionRate = totalTargetReps > 0 ? Math.round((totalActualReps / totalTargetReps) * 100) : 0;
-            return {
-              weekStart: weekStartStr,
-              weekEnd: weekEndStr,
-              completionRate,
-              hasPlans: weekPlans.length > 0
-            };
-          }, [plans, details]);
-
           const activePlan = useMemo(() => {
             return plans.find(p => p.date === selectedDate);
           }, [plans, selectedDate]);
@@ -432,7 +420,7 @@
             } else {
               setExercises([...exercises, { ...exForm, id: 'E_' + Date.now() }]);
             }
-            setExForm({ id: null, name: '', target_value: 100, unit: 'Lần', target_sets: 3, point: 5 });
+            setExForm({ id: null, name: '', target_value: 100, unit: 'rep', target_sets: 3, point: 5 });
             setAlertModal({ isOpen: true, title: 'Thành công', message: 'Đã cập nhật danh mục bài tập!' });
           };
 
@@ -528,20 +516,33 @@
             });
           };
 
-          const updateActualValue = (detailId, field, value) => {
-            const numValue = Number(value);
+          // --- LOGIC MỚI: TỰ ĐỘNG QUY ĐỔI SỐ REPS THEO SỐ SET ĐÃ XONG ---
+          const updateActualSets = (detailId, value) => {
+            const numSets = value === '' ? 0 : Number(value);
             updateLocalTimestamp();
+            
             setDetails(prevDetails => {
               return prevDetails.map(d => {
                 if (d.id === detailId) {
-                  const oldVal = Number(d[field] || 0);
-                  if (oldVal !== 0 && oldVal !== numValue && value !== "") {
+                  const oldSets = Number(d.actual_sets || 0);
+                  if (oldSets !== 0 && oldSets !== numSets && value !== "") {
                     setToast({
                       show: true,
-                      message: "Bạn đang chỉnh lại số lượng thực tế, hãy nhớ trung thực nhé. 💪"
+                      message: "Bạn đang chỉnh lại số Set thực tế, hãy nhớ trung thực nhé. 💪"
                     });
                   }
-                  return { ...d, [field]: numValue };
+
+                  // Quy đổi: reps_per_set = target_reps / target_sets
+                  const targetSets = Number(d.target_sets || 1);
+                  const targetReps = Number(d.target_reps || 0);
+                  const repsPerSet = targetSets > 0 ? (targetReps / targetSets) : 0;
+                  const calculatedReps = Math.round(numSets * repsPerSet);
+
+                  return { 
+                    ...d, 
+                    actual_sets: numSets,
+                    actual_reps: calculatedReps
+                  };
                 }
                 return d;
               });
@@ -620,7 +621,6 @@
 
                 logToConsole('info', `Dữ liệu từ Cloud: Exercises(${cloudExercisesRaw.length}), Plans(${cloudPlansRaw.length}), Details(${cloudDetailsRaw.length}), LastChanged(${cloudTime})`);
 
-                // --- KHU VỰC CHUẨN HÓA LÀM SẠCH DỮ LIỆU TỪ SHEET ---
                 const cloudExercises = cloudExercisesRaw.map(ex => ({
                   ...ex,
                   target_value: Number(ex.target_value || 0),
@@ -655,7 +655,6 @@
                 const hasCloudData = cloudPlans.length > 0 || cloudDetails.length > 0;
                 const hasLocalData = plans.length > 0 || details.length > 0;
 
-                // GIẢI QUYẾT XUNG ĐỘT PHIÊN BẢN ĐỒNG BỘ:
                 if (cloudTime > localTime && hasCloudData) {
                   isPullingRef.current = true;
                   logToConsole('success', 'Dữ liệu Cloud mới hơn! Cập nhật máy của bạn...');
@@ -731,6 +730,162 @@
             document.execCommand('copy');
             document.body.removeChild(el);
             setToast({ show: true, message: 'Đã sao chép Log Console vào bộ nhớ tạm! 📋' });
+          };
+
+          const runGeminiAnalysis = async () => {
+            if (!geminiApiKey || geminiApiKey.trim() === "") {
+              setAlertModal({
+                isOpen: true,
+                title: 'Thiếu API Key 🔑',
+                message: 'Vui lòng truy cập tab "Cài đặt" (Bánh răng) và nhập Gemini API Key của bạn để sử dụng tính năng thông minh này!'
+              });
+              return;
+            }
+
+            setAiModal({ isOpen: true, isLoading: true, analysis: '', adjustments: [], newSuggestions: [] });
+            setSelectedAdjIds([]);
+            setSelectedNewSugIndices([]);
+            logToConsole('info', 'Bắt đầu kết nối với Gemini AI...');
+
+            const bmi = currentBMI;
+            const prompt = `
+              Bạn là một chuyên gia huấn luyện viên thể hình Calisthenics & Y khoa. 
+              Hãy phân tích chỉ số cơ thể của hội viên:
+              - Chiều cao: ${profile.height}m
+              - Cân nặng: ${profile.weight}kg
+              - BMI: ${bmi} (Béo phì nhẹ, nhưng có nền tảng tập gym 5 năm, khối lượng cơ bắp cực lớn 38kg).
+              - Thiết bị: Chỉ có XÀ ĐƠN + DÂY KHÁNG LỰC + BODYWEIGHT.
+              - Mục tiêu: Giảm mỡ an toàn, bảo vệ tối đa khớp cổ tay, cùi chỏ và khớp gối khi vận động cường độ cao.
+
+              Dưới đây là danh sách bài tập hiện tại của hội viên:
+              ${JSON.stringify(exercises, null, 2)}
+
+              Nhiệm vụ của bạn:
+              1. ĐỐI VỚI BÀI TẬP HIỆN TẠI: Đề xuất điều chỉnh số lượng mục tiêu (target_value), số sets (target_sets) và số điểm thưởng (point) cho từng bài tập sao cho an toàn cho thể trạng nặng 90kg. Giữ nguyên ID gốc và tuyệt đối KHÔNG ĐỔI TÊN (name) hay ĐƠN VỊ (unit) của bài tập hiện tại.
+              2. ĐỀ XUẤT THÊM BÀI TẬP MỚI (Tối đa 2-3 bài tập): Đề xuất thêm các bài tập mới thích hợp (ưu tiên Cardio an toàn cho khớp như đi bộ nhanh, hoặc bài tập bổ trợ mông đùi/bụng/lưng bằng dây kháng lực và xà đơn).
+              3. ĐẶC BIỆT QUAN TRỌNG: Tất cả giá trị điểm số "point" của các bài tập (cả điều chỉnh và thêm mới) BẮT BUỘC PHẢI LÀ BỘI SỐ CỦA 5 (chỉ chọn một trong các mốc điểm chuẩn: 5, 10, 15, hoặc 20 point). Tuyệt đối không để điểm lẻ (như 2, 3, 4, 6, 8, 12, ...).
+              
+              Phản hồi hoàn toàn bằng cấu trúc dữ liệu JSON thuần túy dưới đây (không bọc trong thẻ markdown, không viết thêm bất kỳ văn bản giải thích thừa thãi nào ngoài JSON):
+              {
+                "analysis": "Lời khuyên y khoa/thể hình ngắn gọn tầm 3-4 câu tập trung vào việc bảo vệ khớp và phân bổ lực kéo/đẩy phù hợp với BMI hiện tại.",
+                "adjustments": [
+                  {
+                    "id": "id của bài tập hiện tại tương ứng",
+                    "target_value": số_rep_hoặc_thời_gian_mới,
+                    "target_sets": số_set_mới,
+                    "point": số_point_mới_bội_số_của_5
+                  }
+                ],
+                "new_suggestions": [
+                  {
+                    "name": "Tên bài tập mới gợi ý bằng tiếng Việt đầy đủ",
+                    "target_value": số_rep_hoặc_thời_gian,
+                    "unit": "đơn vị đo phù hợp như rep/giây/phút",
+                    "target_sets": số_set,
+                    "point": số_point_bội_số_của_5
+                  }
+                ]
+              }
+            `;
+
+            try {
+              const activeModel = HARDCODED_GEMINI_MODEL || "gemini-3.1-flash-lite";
+              logToConsole('info', `Đang gọi API với Model: ${activeModel}...`);
+
+              const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${activeModel}:generateContent?key=${geminiApiKey}`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                  contents: [{
+                    parts: [{ text: prompt }]
+                  }],
+                  generationConfig: {
+                    responseMimeType: "application/json"
+                  }
+                })
+              });
+
+              if (!response.ok) {
+                throw new Error(`Google API returned status ${response.status}`);
+              }
+
+              const resJson = await response.json();
+              const textResponse = resJson.candidates[0].content.parts[0].text;
+              const parsedResult = JSON.parse(textResponse);
+
+              const adjs = parsedResult.adjustments || [];
+              const newSugs = parsedResult.new_suggestions || [];
+
+              setAiModal({
+                isOpen: true,
+                isLoading: false,
+                analysis: parsedResult.analysis,
+                adjustments: adjs,
+                newSuggestions: newSugs
+              });
+
+              // Mặc định chọn tất cả các đề xuất của AI
+              setSelectedAdjIds(adjs.map(a => a.id));
+              setSelectedNewSugIndices(newSugs.map((_, idx) => idx));
+
+              logToConsole('success', 'Gemini AI phân tích và tối ưu hóa hệ điểm cơ số 5 thành công.');
+            } catch (err) {
+              logToConsole('error', `LỖI PHÂN TÍCH AI: ${err.message || err.toString()}`);
+              setAiModal(prev => ({ ...prev, isOpen: false, isLoading: false }));
+              setAlertModal({
+                isOpen: true,
+                title: 'Lỗi Kết Nối Gemini AI 🔴',
+                message: `Đã xảy ra lỗi khi gọi trí tuệ nhân tạo: ${err.message || err.toString()}\nVui lòng kiểm tra lại tính chính xác của Gemini API Key trong Cài đặt!`
+              });
+            }
+          };
+
+          const applyAiAdjustments = () => {
+            updateLocalTimestamp();
+            setExercises(prevExercises => {
+              // 1. Chỉ áp dụng các thay đổi cho các bài tập cũ được người dùng lựa chọn chọn
+              let updated = prevExercises.map(ex => {
+                const isSelected = selectedAdjIds.includes(ex.id);
+                if (isSelected) {
+                  const adj = aiModal.adjustments.find(a => a.id === ex.id);
+                  if (adj) {
+                    return {
+                      ...ex,
+                      target_value: Number(adj.target_value || ex.target_value),
+                      target_sets: Number(adj.target_sets || ex.target_sets),
+                      point: Number(adj.point || ex.point)
+                    };
+                  }
+                }
+                return ex;
+              });
+
+              // 2. Chỉ thêm mới các bài tập được đề xuất và được lựa chọn
+              const selectedNewExs = aiModal.newSuggestions
+                .filter((_, idx) => selectedNewSugIndices.includes(idx))
+                .map((newEx, idx) => ({
+                  id: 'E_AI_' + Date.now() + '_' + idx,
+                  name: newEx.name,
+                  target_value: Number(newEx.target_value),
+                  unit: newEx.unit || 'rep',
+                  target_sets: Number(newEx.target_sets),
+                  point: Number(newEx.point)
+                }));
+
+              return [...updated, ...selectedNewExs];
+            });
+
+            setAiModal({ isOpen: false, isLoading: false, analysis: '', adjustments: [], newSuggestions: [] });
+            setSelectedAdjIds([]);
+            setSelectedNewSugIndices([]);
+            
+            setAlertModal({
+              isOpen: true,
+              title: 'Cập Nhật Thành Công 🎉',
+              message: 'Đã hoàn tất điều chỉnh an toàn khớp cho các bài tập được lựa chọn từ HLV AI!'
+            });
           };
 
           useEffect(() => {
@@ -898,32 +1053,31 @@
                                   <span>{rate}% Hoàn thành</span>
                                 </div>
 
-                                {/* Form điền trực tiếp khi click vào bài tập ở Dashboard */}
+                                {/* GIAO DIỆN NHẬP LIỆU MỚI: CHỈ NHẬP SỐ SET */}
                                 {isEditing ? (
                                   <div 
-                                    className="mt-3 pt-3 border-t border-slate-200/60 grid grid-cols-2 gap-3 animate-in slide-in-from-top-2 duration-150"
+                                    className="mt-3 pt-3 border-t border-slate-200/60 flex flex-col gap-2 animate-in slide-in-from-top-2 duration-150"
                                     onClick={(e) => e.stopPropagation()} 
                                   >
-                                    <div className="bg-white p-2 rounded-xl border border-slate-100">
-                                      <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Thực tế ({ex.unit})</label>
-                                      <input 
-                                        type="number" 
-                                        value={d.actual_reps || ''} 
-                                        onChange={(e) => updateActualValue(d.id, 'actual_reps', e.target.value)} 
-                                        className="w-full bg-slate-50 border border-slate-200 p-1 rounded-lg text-center font-bold text-xs text-indigo-700 focus:border-indigo-500 outline-none" 
-                                        placeholder="0"
-                                      />
-                                    </div>
-
-                                    <div className="bg-white p-2 rounded-xl border border-slate-100">
-                                      <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Set đã xong</label>
-                                      <input 
-                                        type="number" 
-                                        value={d.actual_sets || ''} 
-                                        onChange={(e) => updateActualValue(d.id, 'actual_sets', e.target.value)} 
-                                        className="w-full bg-slate-50 border border-slate-200 p-1 rounded-lg text-center font-bold text-xs text-indigo-700 focus:border-indigo-500 outline-none" 
-                                        placeholder="0"
-                                      />
+                                    <div className="bg-white p-3 rounded-xl border border-slate-200/80 shadow-sm flex flex-col justify-between">
+                                      <div className="flex justify-between items-center">
+                                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">Số Set Đã Xong</label>
+                                        <span className="text-[10px] font-extrabold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md">Mục tiêu: {d.target_sets} Sets</span>
+                                      </div>
+                                      <div className="flex items-center gap-3 mt-1.5">
+                                        <input 
+                                          type="number" 
+                                          min="0"
+                                          max={d.target_sets * 2}
+                                          value={d.actual_sets || ''} 
+                                          onChange={(e) => updateActualSets(d.id, e.target.value)} 
+                                          className="w-24 bg-slate-100 border border-slate-200 p-2 rounded-xl text-center font-extrabold text-base text-indigo-700 focus:border-indigo-500 outline-none focus:ring-2 focus:ring-indigo-100" 
+                                          placeholder="0"
+                                        />
+                                        <div className="flex-1 text-xs text-slate-500 font-medium">
+                                          ⚡ Quy đổi tự động: <span className="font-extrabold text-slate-800 text-sm">{d.actual_reps || 0}</span> / {d.target_reps} {ex.unit}
+                                        </div>
+                                      </div>
                                     </div>
                                   </div>
                                 ) : (
@@ -944,12 +1098,24 @@
                 {/* TAB 2: QUẢN LÝ DANH MỤC BÀI TẬP CHUNG */}
                 {activeTab === 'exercises' && (
                   <div className="space-y-4 animate-in fade-in duration-200">
-                    <h2 className="text-xl font-bold text-slate-800">Danh mục Bài Tập</h2>
+                    
+                    {/* TIÊU ĐỀ KÈM NÚT AI SIÊU COMPACT */}
+                    <div className="flex justify-between items-center bg-white p-3 rounded-2xl border border-slate-100 shadow-sm">
+                      <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Danh mục Bài Tập</h2>
+                      <button 
+                        onClick={runGeminiAnalysis} 
+                        className="flex items-center gap-1.5 bg-gradient-to-r from-indigo-600 to-slate-900 text-white text-[10px] font-extrabold py-2 px-3 rounded-xl shadow-md hover:brightness-110 active:scale-95 transition-all duration-200"
+                        title="Phân tích BMI và tối ưu hóa hệ cơ số 5 bằng Gemini"
+                      >
+                        <Sparkles size={11} className="text-yellow-300 animate-pulse" />
+                        <span>HLV AI TỐI ƯU</span>
+                      </button>
+                    </div>
 
                     {/* Form thêm bài tập gốc */}
                     <div className={`p-4 rounded-2xl border ${exForm.id ? 'bg-amber-50 border-amber-200' : 'bg-white border-slate-100'} shadow-sm`}>
                       <h3 className="font-bold text-xs text-slate-800 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-                        {exForm.id ? <><Edit2 size={14} className="text-amber-500" /> Sửa bài tập</> : <><Plus size={14} className="text-blue-500" /> Tạo bài tập mới</>}
+                        {exForm.id ? <><Edit2 size={14} className="text-amber-500" /> Sửa bài tập</> : <><Plus size={14} className="text-indigo-500" /> Tạo bài tập mới</>}
                       </h3>
                       <form onSubmit={saveExercise} className="space-y-3">
                         <div>
@@ -965,10 +1131,10 @@
                           <div>
                             <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Đơn vị</label>
                             <select name="unit" value={exForm.unit} onChange={handleExFormChange} className="w-full border border-slate-200 rounded-xl p-2.5 text-xs font-semibold focus:border-indigo-500 outline-none bg-white">
-                              <option value="Lần">Lần (Reps)</option>
-                              <option value="Giây">Giây</option>
-                              <option value="Phút">Phút</option>
-                              <option value="km">Km</option>
+                              <option value="rep">rep</option>
+                              <option value="giây">giây</option>
+                              <option value="phút">phút</option>
+                              <option value="km">km</option>
                             </select>
                           </div>
                           <div>
@@ -986,7 +1152,7 @@
                             {exForm.id ? 'Cập Nhật' : 'Thêm Vào Kho'}
                           </button>
                           {exForm.id && (
-                            <button type="button" onClick={() => setExForm({ id: null, name: '', target_value: 100, unit: 'Lần', target_sets: 3, point: 5 })} className="px-4 bg-slate-200 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-300">
+                            <button type="button" onClick={() => setExForm({ id: null, name: '', target_value: 100, unit: 'rep', target_sets: 3, point: 5 })} className="px-4 bg-slate-200 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-300">
                               Hủy
                             </button>
                           )}
@@ -1002,7 +1168,7 @@
                           <div>
                             <span className="font-bold text-slate-800 text-xs block">{ex.name}</span>
                             <span className="text-[10px] text-slate-400 mt-1 block">
-                              Cơ bản: {ex.target_value} {ex.unit} • {ex.target_sets} Sets • Point: <span className="text-indigo-600 font-bold">+{ex.point}p</span>
+                              Mục tiêu: {ex.target_value} {ex.unit} • {ex.target_sets} Sets • Điểm: <span className="text-indigo-600 font-bold">+{ex.point}p</span>
                             </span>
                           </div>
                           <div className="flex gap-1.5">
@@ -1113,32 +1279,23 @@
                                 </span>
                               </div>
 
-                              <div className="grid grid-cols-2 gap-3">
-                                <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                                  <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Thực tế ({ex.unit})</label>
-                                  <div className="flex items-center gap-1.5">
-                                    <input 
-                                      type="number" 
-                                      value={d.actual_reps || ''} 
-                                      onChange={(e) => updateActualValue(d.id, 'actual_reps', e.target.value)} 
-                                      className="w-full bg-white border border-slate-200 p-1.5 rounded-lg text-center font-bold text-sm text-indigo-700 focus:border-indigo-500 outline-none" 
-                                      placeholder="0"
-                                    />
-                                    <span className="text-xs text-slate-400 font-semibold">/ {d.target_reps}</span>
-                                  </div>
+                              {/* CHỈ CẦN NHẬP SỐ SET ĐÃ XONG TRONG TAB LỊCH TẬP */}
+                              <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 flex flex-col gap-2">
+                                <div className="flex justify-between items-center">
+                                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider">Nhập Số Set Hoàn Thành</label>
+                                  <span className="text-[10px] font-bold text-slate-400">Yêu cầu: {d.target_sets} Sets</span>
                                 </div>
-
-                                <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                                  <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Set hoàn thành</label>
-                                  <div className="flex items-center gap-1.5">
-                                    <input 
-                                      type="number" 
-                                      value={d.actual_sets || ''} 
-                                      onChange={(e) => updateActualValue(d.id, 'actual_sets', e.target.value)} 
-                                      className="w-full bg-white border border-slate-200 p-1.5 rounded-lg text-center font-bold text-sm text-indigo-700 focus:border-indigo-500 outline-none" 
-                                      placeholder="0"
-                                    />
-                                    <span className="text-xs text-slate-400 font-semibold">/ {d.target_sets}</span>
+                                <div className="flex items-center gap-3">
+                                  <input 
+                                    type="number" 
+                                    min="0"
+                                    value={d.actual_sets || ''} 
+                                    onChange={(e) => updateActualSets(d.id, e.target.value)} 
+                                    className="w-24 bg-white border border-slate-200 p-2 rounded-xl text-center font-extrabold text-base text-indigo-700 focus:border-indigo-500 outline-none focus:ring-2 focus:ring-indigo-100" 
+                                    placeholder="0"
+                                  />
+                                  <div className="text-xs text-slate-500">
+                                    🎉 Tự động quy đổi: <span className="font-extrabold text-indigo-600 text-sm">{d.actual_reps || 0}</span> / {d.target_reps} {ex.unit}
                                   </div>
                                 </div>
                               </div>
@@ -1272,13 +1429,34 @@
                       </div>
                     </div>
 
-                    {/* Cài đặt API */}
+                    {/* Cấu hình Gemini API */}
+                    <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 space-y-3">
+                      <h3 className="font-bold text-slate-800 text-xs uppercase tracking-wider flex items-center gap-1.5 text-indigo-600">
+                        <Sparkles size={14} /> Gemini Developer API Key
+                      </h3>
+                      <p className="text-[10px] text-slate-400 leading-relaxed">
+                        Nhập khóa API Gemini để kích hoạt tính năng HLV Trí Tuệ Nhân Tạo phân tích sức bền và cơ khớp:
+                      </p>
+                      <input 
+                        type="password" 
+                        value={geminiApiKey} 
+                        onChange={(e) => { setGeminiApiKey(e.target.value); localStorage.setItem('gemini_api_key', JSON.stringify(e.target.value)); }} 
+                        className="w-full border border-slate-200 rounded-xl p-2.5 text-xs font-semibold focus:border-indigo-500 outline-none" 
+                        placeholder="Nhập API Key bắt đầu bằng AIzaSy..." 
+                      />
+                      <div className="text-[9px] text-slate-400 flex justify-between">
+                        <span>Được lưu cục bộ bảo mật trên máy của bạn.</span>
+                        <a href="https://aistudio.google.com/" target="_blank" rel="noreferrer" className="text-indigo-600 font-bold hover:underline">Lấy Key Miễn Phí 🔗</a>
+                      </div>
+                    </div>
+
+                    {/* Cài đặt API Sheet */}
                     <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 space-y-3">
                       <h3 className="font-bold text-slate-800 text-xs uppercase tracking-wider flex items-center gap-1.5">
                         <Save size={14} className="text-emerald-500" /> Google Sheets API URL
                       </h3>
                       <p className="text-[10px] text-slate-400 leading-relaxed">
-                        Nhập địa chỉ Web App URL đã triển khai từ Google Sheets để đồng bộ hóa dữ liệu tập luyện:
+                        Nhập địa chỉ Web App URL đã triển khai từ Google Sheets để đồng bộ dữ liệu tập luyện:
                       </p>
                       <div className="flex gap-2">
                         <input type="url" value={sheetUrl} onChange={(e) => { setSheetUrl(e.target.value); localStorage.setItem('sheet_api_url', e.target.value); }} className="flex-1 border border-slate-200 rounded-xl p-2.5 text-xs font-semibold focus:border-emerald-500 outline-none" placeholder="https://script.google.com/macros/s/..." />
@@ -1343,6 +1521,168 @@
                   </button>
                 </div>
               </nav>
+
+              {/* === MODAL HIỂN THỊ KẾT QUẢ PHÂN TÍCH GEMINI AI === */}
+              {aiModal.isOpen && (
+                <div className="fixed inset-0 bg-slate-900/85 z-50 flex items-end justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
+                  <div className="bg-white rounded-[28px] shadow-2xl max-w-md w-full overflow-hidden p-5 flex flex-col h-[580px] animate-in slide-in-from-bottom-8 duration-300">
+                    <div className="flex justify-between items-center mb-3">
+                      <h3 className="font-black text-indigo-600 text-xs uppercase tracking-widest flex items-center gap-1.5">
+                        <Sparkles size={16} className="text-indigo-500 animate-spin" /> Gemini AI Optimizer
+                      </h3>
+                      {!aiModal.isLoading && (
+                        <button 
+                          onClick={() => setAiModal({ isOpen: false, isLoading: false, analysis: '', adjustments: [], newSuggestions: [] })}
+                          className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-500 text-[10px] rounded-lg font-bold transition active:scale-95"
+                        >
+                          Đóng
+                        </button>
+                      )}
+                    </div>
+
+                    {aiModal.isLoading ? (
+                      <div className="flex-1 flex flex-col items-center justify-center text-center space-y-4">
+                        <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                        <div>
+                          <p className="font-bold text-xs text-slate-800">Đang khởi tạo nơ-ron AI...</p>
+                          <p className="text-[10px] text-slate-400 mt-1 max-w-[250px] mx-auto">Gemini đang đo lường mô phỏng áp lực khớp dựa trên chiều cao {profile.height}m, cân nặng {profile.weight}kg và 38kg cơ bắp của bạn.</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex-1 flex flex-col overflow-hidden space-y-4">
+                        {/* Lời khuyên phân tích */}
+                        <div className="bg-indigo-50/50 border border-indigo-100 rounded-2xl p-3.5">
+                          <h4 className="text-[10px] font-bold text-indigo-700 uppercase tracking-wide mb-1 flex items-center gap-1">
+                            📋 Đánh giá thể lực (Hệ cơ số 5)
+                          </h4>
+                          <p className="text-slate-600 text-[11px] leading-relaxed italic">
+                            "{aiModal.analysis}"
+                          </p>
+                        </div>
+
+                        {/* Danh sách so sánh Before/After */}
+                        {}
+                        <div className="flex-1 overflow-y-auto space-y-2.5 custom-scrollbar pr-1">
+                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest px-1">Chạm vào bài tập để chọn áp dụng:</p>
+                          
+                          {/* 1. Phần bài tập CŨ được ĐIỀU CHỈNH (Tag Màu Vàng) */}
+                          {aiModal.adjustments.map(adj => {
+                            const original = exercises.find(e => e.id === adj.id);
+                            if (!original) return null;
+                            const isSelected = selectedAdjIds.includes(adj.id);
+                            
+                            return (
+                              <div 
+                                key={adj.id} 
+                                onClick={() => {
+                                  setSelectedAdjIds(prev => 
+                                    prev.includes(adj.id) ? prev.filter(id => id !== adj.id) : [...prev, adj.id]
+                                  );
+                                }}
+                                className={`p-3 rounded-2xl border transition-all duration-200 cursor-pointer ${
+                                  isSelected 
+                                    ? 'bg-amber-50/60 border-amber-400 shadow-sm' 
+                                    : 'bg-slate-50/40 border-slate-200 opacity-60 hover:opacity-85'
+                                } flex flex-col justify-between`}
+                              >
+                                <div className="flex justify-between items-start">
+                                  <div className="flex items-center gap-2">
+                                    <div className={`w-4 h-4 rounded-full flex items-center justify-center border transition-all ${
+                                      isSelected ? 'bg-amber-500 border-amber-500 text-white' : 'border-slate-300 text-transparent'
+                                    }`}>
+                                      <span className="text-[9px] font-bold">✓</span>
+                                    </div>
+                                    <span className="font-bold text-xs text-slate-800">{original.name}</span>
+                                  </div>
+                                  <span className={`text-[8px] font-bold px-2 py-0.5 rounded-full border ${
+                                    isSelected ? 'bg-amber-100 text-amber-800 border-amber-200' : 'bg-slate-100 text-slate-500 border-slate-200'
+                                  }`}>
+                                    Điều chỉnh
+                                  </span>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-dashed border-slate-200/60 text-[10px]">
+                                  <div className="text-slate-400">
+                                    Cũ: <span className="font-semibold">{original.target_sets}x{original.target_value} {original.unit}</span> ({original.point}p)
+                                  </div>
+                                  <div className={`font-extrabold text-right ${isSelected ? 'text-amber-800' : 'text-slate-500'}`}>
+                                    Mới: <span>{adj.target_sets}x{adj.target_value} {original.unit}</span> (<span className="underline">{adj.point}p</span>)
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+
+                          {/* 2. Phần bài tập MỚI được THÊM MỚI (Tag Màu Xanh Lá) */}
+                          {aiModal.newSuggestions.map((newEx, idx) => {
+                            const isSelected = selectedNewSugIndices.includes(idx);
+                            return (
+                              <div 
+                                key={'new_' + idx} 
+                                onClick={() => {
+                                  setSelectedNewSugIndices(prev => 
+                                    prev.includes(idx) ? prev.filter(i => i !== idx) : [...prev, idx]
+                                  );
+                                }}
+                                className={`p-3 rounded-2xl border transition-all duration-200 cursor-pointer ${
+                                  isSelected 
+                                    ? 'bg-emerald-50/50 border-emerald-400 shadow-sm' 
+                                    : 'bg-slate-50/40 border-slate-200 opacity-60 hover:opacity-85'
+                                } flex flex-col justify-between`}
+                              >
+                                <div className="flex justify-between items-start">
+                                  <div className="flex items-center gap-2">
+                                    <div className={`w-4 h-4 rounded-full flex items-center justify-center border transition-all ${
+                                      isSelected ? 'bg-emerald-600 border-emerald-600 text-white' : 'border-slate-300 text-transparent'
+                                    }`}>
+                                      <span className="text-[9px] font-bold">✓</span>
+                                    </div>
+                                    <span className="font-bold text-xs text-slate-800">{newEx.name}</span>
+                                  </div>
+                                  <span className={`text-[8px] font-bold px-2 py-0.5 rounded-full border ${
+                                    isSelected ? 'bg-emerald-100 text-emerald-800 border-emerald-200' : 'bg-slate-100 text-slate-500 border-slate-200'
+                                  }`}>
+                                    Thêm mới
+                                  </span>
+                                </div>
+                                <div className="flex justify-between items-center mt-2 pt-2 border-t border-dashed border-slate-200/60 text-[10px]">
+                                  <div className="text-slate-400">Bài tập bổ trợ an toàn</div>
+                                  <div className={`font-extrabold text-right ${isSelected ? 'text-emerald-700' : 'text-slate-500'}`}>
+                                    Định lượng: {newEx.target_sets}x{newEx.target_value} {newEx.unit} ({newEx.point}p)
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        <div className="pt-3 border-t border-slate-100 flex gap-2">
+                          <button 
+                            onClick={() => {
+                              setAiModal({ isOpen: false, isLoading: false, analysis: '', adjustments: [], newSuggestions: [] });
+                              setSelectedAdjIds([]);
+                              setSelectedNewSugIndices([]);
+                            }}
+                            className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-2.5 rounded-xl text-xs transition active:scale-95"
+                          >
+                            Bỏ qua
+                          </button>
+                          <button 
+                            onClick={applyAiAdjustments}
+                            disabled={selectedAdjIds.length === 0 && selectedNewSugIndices.length === 0}
+                            className={`flex-1 font-extrabold py-2.5 rounded-xl text-xs tracking-wide uppercase transition active:scale-95 shadow-md ${
+                              (selectedAdjIds.length > 0 || selectedNewSugIndices.length > 0)
+                                ? 'bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer'
+                                : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                            }`}
+                          >
+                            Áp Dụng ({selectedAdjIds.length + selectedNewSugIndices.length})
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* === CONSOLE MODAL ĐỘC LẬP === */}
               {isConsoleOpen && (
