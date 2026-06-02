@@ -57,11 +57,11 @@
         const { useState, useEffect, useMemo, useRef } = React;
 
         // ===========================================================================
-        // 1. DÁN API KEY CỦA BẠN VÀO ĐÂY (Thay thế chuỗi dưới đây bằng Key thực tế của bạn)
-        const HARDCODED_GEMINI_API_KEY = "AIzaSyB9oR7imw16wYMiqVLYShGuJBVgzbFFAu0";
+        // 1. Hãy nhập API Key trực tiếp trên giao diện Cài đặt (Bánh răng) của App để tránh bị Google quét khóa key tự động.
+        const HARDCODED_GEMINI_API_KEY = "AIzaSyACimJOTMrozGs4wzRFviy6JK1bhylQvLg"; // Để trống mặc định để bảo mật
 
-        // 2. CẤU HÌNH TÊN MODEL GEMINI MUỐN SỬ DỤNG TẠI ĐÂY
-        const HARDCODED_GEMINI_MODEL = "gemini-3.1-flash-lite";
+        // 2. CẤU HÌNH TÊN MODEL GEMINI CHUẨN XÁC VÀ ỔN ĐỊNH NHẤT
+        const HARDCODED_GEMINI_MODEL = "gemini-3.1-flash-lite"; 
         // ===========================================================================
 
         const DEFAULT_SHEET_URL = "https://script.google.com/macros/s/AKfycbyJcqcKxvmMkFcDfstKI211v1pUBkCvXpK59Fk3XjVwcN8G6R76rDYUQ_xiyg6n-YIIzw/exec"; 
@@ -754,7 +754,7 @@
               setAlertModal({
                 isOpen: true,
                 title: 'Thiếu API Key 🔑',
-                message: 'Vui lòng truy cập tab "Cài đặt" (Bánh răng) và nhập Gemini API Key của bạn để sử dụng tính năng thông minh này!'
+                message: 'Vui lòng truy cập tab "Cài đặt" (Bánh răng ở góc dưới) và nhập Gemini API Key của bạn để sử dụng tính năng thông minh này!'
               });
               return;
             }
@@ -788,6 +788,7 @@
                 "adjustments": [
                   {
                     "id": "id của bài tập hiện tại tương ứng",
+                    "name": "Tên bài tập hiện tại tương ứng để đối chiếu dự phòng",
                     "target_value": số_rep_hoặc_thời_gian_mới,
                     "target_sets": số_set_mới,
                     "point": số_point_mới_bội_số_của_5
@@ -832,22 +833,42 @@
               const textResponse = resJson.candidates[0].content.parts[0].text;
               const parsedResult = JSON.parse(textResponse);
 
-              const adjs = parsedResult.adjustments || [];
+              const rawAdjs = parsedResult.adjustments || [];
               const newSugs = parsedResult.new_suggestions || [];
+
+              // THUẬT TOÁN ĐỒNG BỘ VÀ SO KHỚP DỮ LIỆU TỐI TÂN (BẢO VỆ CHỐNG THẤT LẠC ID/NAME)
+              const validatedAdjs = [];
+              const matchedAdjIds = [];
+
+              rawAdjs.forEach(adj => {
+                // Kiểm tra so khớp chính xác ID trước, nếu thất bại tiến hành so khớp dự phòng bằng Name
+                const original = exercises.find(e => String(e.id) === String(adj.id)) || 
+                                 exercises.find(e => e.name.toLowerCase().trim() === String(adj.name || '').toLowerCase().trim());
+                
+                if (original) {
+                  // Ghi đè đồng bộ về ID và Name gốc nội bộ của máy để đảm bảo React Render không bị 'null'
+                  validatedAdjs.push({
+                    ...adj,
+                    id: original.id, 
+                    name: original.name
+                  });
+                  matchedAdjIds.push(original.id);
+                }
+              });
 
               setAiModal({
                 isOpen: true,
                 isLoading: false,
                 analysis: parsedResult.analysis,
-                adjustments: adjs,
+                adjustments: validatedAdjs,
                 newSuggestions: newSugs
               });
 
-              // Mặc định chọn tất cả các đề xuất của AI
-              setSelectedAdjIds(adjs.map(a => a.id));
+              // Chỉ tick chọn những bài tập thực sự ghép nối dữ liệu thành công
+              setSelectedAdjIds(matchedAdjIds);
               setSelectedNewSugIndices(newSugs.map((_, idx) => idx));
 
-              logToConsole('success', 'Gemini AI phân tích và tối ưu hóa hệ điểm cơ số 5 thành công.');
+              logToConsole('success', `Gemini AI phân tích thành công. So khớp thành công ${matchedAdjIds.length} bài tập điều chỉnh.`);
             } catch (err) {
               logToConsole('error', `LỖI PHÂN TÍCH AI: ${err.message || err.toString()}`);
               setAiModal(prev => ({ ...prev, isOpen: false, isLoading: false }));
@@ -967,11 +988,10 @@
                 </div>
               )}
 
-              {/* KHU VỰC CUỘN NỘI DUNG CHÍNH (Chiếm trọn vùng còn lại và tự cuộn) */}
-              {}
+              {/* KHU VỰC CUỘN NỘI DUNG CHÍNH */}
               <main className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar pb-24">
                 
-                {/* TAB 1: TỔNG QUAN TẬP LUYỆN */}
+                {/* TAB 1: TỔNG QUAN TẬP LUYỆEN */}
                 {activeTab === 'dashboard' && (
                   <div className="space-y-4 animate-in fade-in duration-200">
                     <div className="flex justify-between items-center">
@@ -1071,7 +1091,7 @@
                                   <span>{rate}% Hoàn thành</span>
                                 </div>
 
-                                {/* GIAO DIỆN NHẬP LIỆU MỚI: CHỈ NHẬP SỐ SET */}
+                                {/* GIAO DIỆN NHẬP LIỆU: CHỈ NHẬP SỐ SET */}
                                 {isEditing ? (
                                   <div 
                                     className="mt-3 pt-3 border-t border-slate-200/60 flex flex-col gap-2 animate-in slide-in-from-top-2 duration-150"
@@ -1117,7 +1137,7 @@
                 {activeTab === 'exercises' && (
                   <div className="space-y-4 animate-in fade-in duration-200">
                     
-                    {/* TIÊU ĐỀ KÈM NÚT AI SIÊU COMPACT */}
+                    {/* TIÊU ĐỀ KÈM NÚT AI */}
                     <div className="flex justify-between items-center bg-white p-3 rounded-2xl border border-slate-100 shadow-sm">
                       <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Danh mục Bài Tập</h2>
                       <button 
@@ -1297,7 +1317,7 @@
                                 </span>
                               </div>
 
-                              {/* CHỈ CẦN NHẬP SỐ SET ĐÃ XONG TRONG TAB LỊCH TẬP */}
+                              {/* NHẬP SỐ SET ĐÃ XONG TRONG TAB LỊCH TẬP */}
                               <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 flex flex-col gap-2">
                                 <div className="flex justify-between items-center">
                                   <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider">Nhập Số Set Hoàn Thành</label>
@@ -1412,7 +1432,7 @@
                         <div className="flex justify-between items-start">
                           <div>
                             <span className="text-white/80 text-[10px] font-black tracking-widest uppercase bg-white/20 backdrop-blur-md px-3 py-1 rounded-full border border-white/10">
-                              Hạng Sức Mạnh Bản Thân
+                              Hạng Sức Bản Thân
                             </span>
                             <h3 className="text-3xl font-black tracking-tight flex items-center gap-2 mt-3">
                               {rankInfo.name} <span className="text-2xl">{rankInfo.icon}</span>
@@ -1519,7 +1539,7 @@
                       )}
                     </div>
 
-                    {/* BẢN ĐỒ XẾP HẠNG PHÂN BẬC ĐẸP MẮT */}
+                    {/* BẢN ĐỒ XẾP HẠNG PHÂN BẬC */}
                     <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm space-y-2.5">
                       <h3 className="font-extrabold text-xs text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
                         <Award size={14} className="text-indigo-600" /> BẢN ĐỒ XẾP HẠNG ELO
@@ -1605,14 +1625,14 @@
                         <Sparkles size={14} /> Gemini Developer API Key
                       </h3>
                       <p className="text-[10px] text-slate-400 leading-relaxed">
-                        Nhập khóa API Gemini để kích hoạt tính năng HLV Trí Tuệ Nhân Tạo phân tích sức bền và cơ khớp:
+                        Hãy dán khóa API Gemini của bạn vào đây. API Key này được mã hóa và lưu trực tiếp trên thiết bị của bạn:
                       </p>
                       <input 
                         type="password" 
                         value={geminiApiKey} 
                         onChange={(e) => { setGeminiApiKey(e.target.value); localStorage.setItem('gemini_api_key', JSON.stringify(e.target.value)); }} 
                         className="w-full border border-slate-200 rounded-xl p-2.5 text-xs font-semibold focus:border-indigo-500 outline-none" 
-                        placeholder="Nhập API Key bắt đầu bằng AIzaSy..." 
+                        placeholder="AIzaSy..." 
                       />
                       <div className="text-[9px] text-slate-400 flex justify-between">
                         <span>Được lưu cục bộ bảo mật trên máy của bạn.</span>
@@ -1666,8 +1686,7 @@
 
               </main>
 
-              {/* NAV BOTTOM BAR: GHIM CHẶT HOÀN TOÀN Ở ĐÁY KHÔNG BỊ TRÀN CHROME MOBILE */}
-              {}
+              {/* NAV BOTTOM BAR */}
               <nav className="absolute bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-100 pb-safe z-20 shadow-[0_-8px_30px_rgb(0,0,0,0.03)] rounded-t-[24px] flex-shrink-0">
                 <div className="flex justify-around items-center h-16 max-w-md mx-auto px-1">
                   <button onClick={() => setActiveTab('dashboard')} className={`flex flex-col items-center justify-center w-full h-full space-y-1 transition-all-200 ${activeTab === 'dashboard' ? 'text-indigo-600 scale-105' : 'text-slate-400'}`}>
@@ -1693,8 +1712,7 @@
                 </div>
               </nav>
 
-              {/* === MODAL HIỂN THỊ KẾT QUẢ PHÂN TÍCH GEMINI AI VÀ CHỌN LỰA ĐIỀU CHỈNH === */}
-              {}
+              {/* MODAL HIỂN THỊ KẾT QUẢ PHÂN TÍCH GEMINI AI */}
               {aiModal.isOpen && (
                 <div className="fixed inset-0 bg-slate-900/85 z-50 flex items-end justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
                   <div className="bg-white rounded-[28px] shadow-2xl max-w-md w-full overflow-hidden p-5 flex flex-col h-[580px] animate-in slide-in-from-bottom-8 duration-300">
@@ -1732,11 +1750,11 @@
                           </p>
                         </div>
 
-                        {/* Danh sách so sánh Before/After kèm Checkbox chọn áp dụng */}
+                        {/* Danh sách so sánh Before/After */}
                         <div className="flex-1 overflow-y-auto space-y-2.5 custom-scrollbar pr-1">
                           <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest px-1">Chạm vào bài tập muốn áp dụng:</p>
                           
-                          {/* 1. Phần bài tập CŨ được ĐIỀU CHỈNH (Có hộp chọn màu Vàng/Amber) */}
+                          {/* 1. Bài tập CŨ được ĐIỀU CHỈNH */}
                           {aiModal.adjustments.map(adj => {
                             const original = exercises.find(e => e.id === adj.id);
                             if (!original) return null;
@@ -1783,7 +1801,7 @@
                             );
                           })}
 
-                          {/* 2. Phần bài tập MỚI được THÊM MỚI (Có hộp chọn màu Xanh Lá/Emerald) */}
+                          {/* 2. Bài tập MỚI được THÊM MỚI */}
                           {aiModal.newSuggestions.map((newEx, idx) => {
                             const isSelected = selectedNewSugIndices.includes(idx);
                             return (
@@ -1855,7 +1873,7 @@
                 </div>
               )}
 
-              {/* === CONSOLE MODAL ĐỘC LẬP === */}
+              {/* CONSOLE MODAL ĐỘC LẬP */}
               {isConsoleOpen && (
                 <div className="fixed inset-0 bg-slate-900/80 z-50 flex items-end justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
                   <div className="bg-slate-950 rounded-[28px] border border-slate-800 shadow-2xl max-w-sm w-full overflow-hidden p-5 flex flex-col h-[480px] animate-in slide-in-from-bottom-8 duration-300">
@@ -1902,7 +1920,7 @@
                 </div>
               )}
 
-              {/* === POP-UP THÔNG BÁO TÙY BIẾN === */}
+              {/* POP-UP THÔNG BÁO TÙY BIẾN */}
               {alertModal.isOpen && (
                 <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
                   <div className="bg-white rounded-[24px] shadow-2xl max-w-sm w-full overflow-hidden p-6 animate-in fade-in zoom-in-95 duration-150">
@@ -1933,7 +1951,7 @@
                 </div>
               )}
 
-              {/* === POP-UP XÁC NHẬN TÙY BIẾN === */}
+              {/* POP-UP XÁC NHẬN TÙY BIẾN */}
               {confirmModal.isOpen && (
                 <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
                   <div className="bg-white rounded-[24px] shadow-2xl max-w-xs w-full overflow-hidden p-5 animate-in fade-in zoom-in-95 duration-150">
